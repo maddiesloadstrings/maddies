@@ -1,0 +1,228 @@
+getgenv().ScriptConfig = getgenv().ScriptConfig or {
+    SpeedConfig = {
+        Multiplier = 2,
+        ToggleKey = Enum.KeyCode.Z
+    },
+
+    FlyConfig = {
+        ToggleKey = Enum.KeyCode.H,
+        Speed = 500,
+        VerticalSpeed = 400
+    },
+
+    SpinbotConfig = {
+        ToggleKey = Enum.KeyCode.V,
+        Speed = 30
+    },
+
+    CameraLockConfig = {
+        ToggleKey = Enum.KeyCode.C,
+        Prediction = 0.2
+    }
+}
+
+if getgenv().already_executed then
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = ">_<",
+        Text = "You already executed this script dummy",
+        Duration = 5
+    })
+    return
+end
+
+getgenv().already_executed = true
+
+local success, NotifyLibrary = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/XK5NG/XK5NG.github.io/main/Notify"))()
+end)
+local Notify = success and NotifyLibrary.Notify or function(params)
+    print((params.Title or "Notification") .. ": " .. (params.Text or "No Text"))
+end
+
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local HRP = character:WaitForChild("HumanoidRootPart", 10)
+local cameraLockActive = false
+local speedactive = false
+local flyactive = false
+
+local function getClosestPlayerToCursor()
+    local mouse = player:GetMouse()
+    local closestPlayer = nil
+    local closestDistance = math.huge
+
+    for _, targetPlayer in ipairs(Players:GetPlayers()) do
+        if targetPlayer ~= player and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local targetHRP = targetPlayer.Character.HumanoidRootPart
+            local targetPosition = targetHRP.Position
+            local screenPosition, onScreen = Workspace.CurrentCamera:WorldToScreenPoint(targetPosition)
+
+            if onScreen then
+                local cursorPosition = Vector2.new(mouse.X, mouse.Y)
+                local distance = (cursorPosition - Vector2.new(screenPosition.X, screenPosition.Y)).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestPlayer = targetPlayer
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+local function toggleCameraLock()
+    cameraLockActive = not cameraLockActive
+
+    if cameraLockActive then
+        local targetPlayer = getClosestPlayerToCursor()
+
+        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+            local humanoid = targetPlayer.Character.Humanoid
+
+            Notify({
+                Title = "CamLock On",
+                Text = "Locked on: " .. targetPlayer.Name .. " | Health: " .. math.floor(humanoid.Health),
+                Duration = 3
+            })
+
+            RunService:BindToRenderStep("cameraLock", Enum.RenderPriority.Camera.Value, function()
+                if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetHRP = targetPlayer.Character.HumanoidRootPart
+
+                    local predictedPosition = targetHRP.Position
+                    if targetHRP:FindFirstChild("Velocity") then
+                        predictedPosition = targetHRP.Position + (targetHRP.Velocity * getgenv().ScriptConfig.CameraLockConfig.Prediction)
+                    end
+
+                    Workspace.CurrentCamera.CFrame = CFrame.lookAt(Workspace.CurrentCamera.CFrame.Position, predictedPosition)
+                else
+                    toggleCameraLock()
+                end
+            end)
+        else
+            Notify({Title = "Camera Lock Failed", Text = "No valid target found.", Duration = 3})
+            cameraLockActive = false
+        end
+    else
+        Notify({Title = "CamLock Off", Text = "Unlocked the camera.", Duration = 3})
+        RunService:UnbindFromRenderStep("cameraLock")
+    end
+end
+
+local function onMove()
+    local moveDirection = Vector3.zero
+    local camera = workspace.CurrentCamera
+
+    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+        moveDirection += (camera.CFrame.LookVector * Vector3.new(1, 0, 1)).Unit
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+        moveDirection -= (camera.CFrame.LookVector * Vector3.new(1, 0, 1)).Unit
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+        moveDirection -= (camera.CFrame.RightVector * Vector3.new(1, 0, 1)).Unit
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+        moveDirection += (camera.CFrame.RightVector * Vector3.new(1, 0, 1)).Unit
+    end
+
+    if HRP then
+        HRP.CFrame = HRP.CFrame + (moveDirection * getgenv().ScriptConfig.SpeedConfig.Multiplier)
+    end
+end
+
+local function toggleSpeed(input)
+    if input.KeyCode == getgenv().ScriptConfig.SpeedConfig.ToggleKey then
+        speedactive = not speedactive
+        if speedactive then
+            RunService:BindToRenderStep("cframeSpeed", Enum.RenderPriority.Character.Value, onMove)
+            Notify({Title = "Speed == On", Duration = 2})
+        else
+            RunService:UnbindFromRenderStep("cframeSpeed")
+            Notify({Title = "Speed == Off", Duration = 2})
+        end
+    end
+end
+
+local function startFlying()
+    flyactive = true
+    local flyLoop
+    flyLoop = RunService.RenderStepped:Connect(function()
+        if not flyactive then
+            flyLoop:Disconnect()
+            return
+        end
+
+        local direction = Vector3.zero
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            direction += Workspace.CurrentCamera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            direction -= Workspace.CurrentCamera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            direction -= Workspace.CurrentCamera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            direction += Workspace.CurrentCamera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            direction += Vector3.new(0, getgenv().ScriptConfig.FlyConfig.VerticalSpeed, 0)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+            direction -= Vector3.new(0, getgenv().ScriptConfig.FlyConfig.VerticalSpeed, 0)
+        end
+
+        if direction.Magnitude > 0 then
+            HRP.Velocity = direction.Unit * getgenv().ScriptConfig.FlyConfig.Speed
+        else
+            HRP.Velocity = Vector3.new(0, 0.1, 0)
+        end
+    end)
+
+    return function()
+        flyactive = false
+        HRP.Velocity = Vector3.new(0, 0, 0)
+    end
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed then
+        if input.KeyCode == getgenv().ScriptConfig.CameraLockConfig.ToggleKey then
+            toggleCameraLock()
+        end
+
+        if input.KeyCode == getgenv().ScriptConfig.FlyConfig.ToggleKey then
+            if not flyactive then
+                flyToggle = startFlying()
+                Notify({Title = "Fly == On", Duration = 2})
+            else
+                flyToggle()
+                Notify({Title = "Fly == Off", Duration = 2})
+            end
+        end
+
+        toggleSpeed(input)
+    end
+end)
+
+local function setupCharacter()
+    character = player.Character or player.CharacterAdded:Wait()
+    HRP = character:WaitForChild("HumanoidRootPart", 10)
+    if speedactive then
+        RunService:BindToRenderStep("cframeSpeed", Enum.RenderPriority.Character.Value, onMove)
+    end
+end
+
+player.CharacterAdded:Connect(setupCharacter)
+
+for i = 1, 5 do
+    StarterGui:SetCore("SendNotification", {Title = "mad.lol", Text = "Script Loaded Successfully", Duration = 5})
+end
